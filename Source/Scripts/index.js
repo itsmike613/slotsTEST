@@ -1,646 +1,753 @@
-const state = {
-    balance: 150,
+(() => {
+  "use strict";
+
+  const state = {
+    balance: 100,
     bonusSpins: 0,
     streak: 0,
     bet: 5,
-    isSpinning: false,
-    auto: false,
-    sound: true,
-    vibrate: true,
     lastWin: 0,
-    lastCombo: ["❔", "❔", "❔"],
-    bestCombo: ["❔", "❔", "❔"],
-    bestComboValue: 0,
-    currentSymbols: ["🪙", "💵", "💰"],
-    autoTimer: null,
+    bestCombo: ["—", "—", "—"],
+    bestComboScore: 0,
+    lastCombo: ["—", "—", "—"],
+    isSpinning: false,
+    autoSpin: false,
+    soundOn: true,
+    vibrateOn: true,
     audioCtx: null,
-};
+    autoTimer: null,
+  };
 
-const PAYOUTS = {
+  const SYMBOLS = {
+    winners: ["🪙", "💵", "💰", "👑"],
+    garbage: ["🥾", "🦴", "💀", "🪨", "🪶"],
+    wild: "⭐",
+    bonus: "🎁",
+  };
+
+  const PAYOUTS = {
     "🪙": 5,
     "💵": 25,
     "💰": 50,
     "👑": 100,
     "⭐": 100,
-};
+  };
 
-const WINNERS = ["🪙", "💵", "💰", "👑"];
-const GARBAGE = ["🥾", "🦴", "💀", "🪨", "🪶"];
-const SPECIALS = ["⭐", "🎁"];
-const ALL_SYMBOLS = [...WINNERS, ...GARBAGE, ...SPECIALS];
+  const BET_MIN = 5;
+  const BET_MAX = 100;
+  const BET_STEP = 5;
 
-let els = {};
+  let els = null;
+  let reelIntervals = [null, null, null];
 
-function getEls() {
-    return {
-        fullscreenGate: document.getElementById("fullscreenGate"),
-        enterFullscreenBtn: document.getElementById("enterFullscreenBtn"),
-        app: document.getElementById("app"),
-        balance: document.getElementById("balance"),
-        bonusSpins: document.getElementById("bonusSpins"),
-        streak: document.getElementById("streak"),
-        status: document.getElementById("status"),
-        reels: [
-            document.getElementById("reel1"),
-            document.getElementById("reel2"),
-            document.getElementById("reel3"),
-        ],
-        reelWindows: Array.from(document.querySelectorAll(".reel-window")),
-        minusBet: document.getElementById("minusBet"),
-        plusBet: document.getElementById("plusBet"),
-        betValue: document.getElementById("betValue"),
-        spinBtn: document.getElementById("spinBtn"),
-        autoBtn: document.getElementById("autoBtn"),
-        bonusBtn: document.getElementById("bonusBtn"),
-        soundBtn: document.getElementById("soundBtn"),
-        vibrateBtn: document.getElementById("vibrateBtn"),
-        lastWin: document.getElementById("lastWin"),
-        bestCombo: document.getElementById("bestCombo"),
-        lastCombo: document.getElementById("lastCombo"),
-        coinsLayer: document.getElementById("coinsLayer"),
-    };
-}
+  function byId(id) {
+    return document.getElementById(id);
+  }
 
-function validateEls() {
-    const required = [
-        "fullscreenGate",
-        "enterFullscreenBtn",
-        "app",
-        "balance",
-        "bonusSpins",
-        "streak",
-        "status",
-        "minusBet",
-        "plusBet",
-        "betValue",
-        "spinBtn",
-        "autoBtn",
-        "bonusBtn",
-        "soundBtn",
-        "vibrateBtn",
-        "lastWin",
-        "bestCombo",
-        "lastCombo",
-        "coinsLayer",
-    ];
+  function qs(sel) {
+    return document.querySelector(sel);
+  }
 
-    for (const key of required) {
-        if (!els[key]) {
-            console.error(`Missing required element: #${key}`);
-            return false;
-        }
-    }
+  function init() {
+    els = getElements();
 
-    if (els.reels.some((el) => !el)) {
-        console.error("Missing one or more reel elements: #reel1 #reel2 #reel3");
-        return false;
-    }
-
-    if (els.reelWindows.length < 3) {
-        console.error("Missing .reel-window elements");
-        return false;
-    }
-
-    return true;
-}
-
-function init() {
-    els = getEls();
-
-    if (!validateEls()) {
-        return;
+    if (!validateRequiredElements()) {
+      console.error("Initialization aborted because required DOM elements are missing.");
+      return;
     }
 
     bindEvents();
     renderAll();
-    setStatus("Ready");
-    ensureFullscreenState();
-}
+    ensureFullscreenOverlay();
+    setStatus("Ready to spin.");
+  }
 
-function bindEvents() {
-    els.enterFullscreenBtn.addEventListener("click", async () => {
-        await requestFullscreen();
-        ensureFullscreenState();
-    });
+  function getElements() {
+    return {
+      fullscreenGate: byId("fullscreenGate"),
+      enterFullscreenBtn: byId("enterFullscreenBtn"),
 
-    document.addEventListener("fullscreenchange", ensureFullscreenState);
-    window.addEventListener("resize", ensureFullscreenState);
+      balanceValue: byId("balanceValue"),
+      bonusValue: byId("bonusValue"),
+      streakValue: byId("streakValue"),
+      statusText: byId("statusText"),
 
-    els.minusBet.addEventListener("click", () => adjustBet(-5));
-    els.plusBet.addEventListener("click", () => adjustBet(5));
-    els.spinBtn.addEventListener("click", () => spin(false));
-    els.bonusBtn.addEventListener("click", () => spin(true));
+      reelWrap: byId("reelWrap"),
+      reels: [byId("reel0"), byId("reel1"), byId("reel2")],
 
-    els.autoBtn.addEventListener("click", () => {
-        state.auto = !state.auto;
-        els.autoBtn.textContent = state.auto ? "Stop" : "Auto";
-        els.autoBtn.classList.toggle("active", state.auto);
+      betDownBtn: byId("betDownBtn"),
+      betUpBtn: byId("betUpBtn"),
+      betValue: byId("betValue"),
+      betChip: byId("betChip"),
 
-        if (state.auto) {
-            setStatus("Auto spinning...");
-            spin(false, true);
-        } else {
-            clearAuto();
-            setStatus("Auto stopped");
-        }
-    });
+      spinBtn: byId("spinBtn"),
+      autoBtn: byId("autoBtn"),
+      bonusBtn: byId("bonusBtn"),
+      soundBtn: byId("soundBtn"),
+      vibrateBtn: byId("vibrateBtn"),
 
-    els.soundBtn.addEventListener("click", () => {
-        state.sound = !state.sound;
-        els.soundBtn.textContent = state.sound ? "Sound" : "Muted";
-        els.soundBtn.classList.toggle("muted", !state.sound);
-    });
+      lastWinValue: byId("lastWinValue"),
+      bestComboValue: byId("bestComboValue"),
+      lastComboValue: byId("lastComboValue"),
 
-    els.vibrateBtn.addEventListener("click", () => {
-        state.vibrate = !state.vibrate;
-        els.vibrateBtn.textContent = state.vibrate ? "Vibrate" : "Smooth";
-        els.vibrateBtn.classList.toggle("muted", !state.vibrate);
-    });
-}
+      coinBurst: byId("coinBurst"),
+      machine: qs(".machine"),
+    };
+  }
 
-function ensureFullscreenState() {
-    const isFullscreen = !!document.fullscreenElement;
-    if (els.fullscreenGate) els.fullscreenGate.hidden = isFullscreen;
-    if (els.app) els.app.classList.toggle("blurred", !isFullscreen);
-}
+  function validateRequiredElements() {
+    const required = [
+      "fullscreenGate",
+      "enterFullscreenBtn",
+      "balanceValue",
+      "bonusValue",
+      "streakValue",
+      "statusText",
+      "betDownBtn",
+      "betUpBtn",
+      "betValue",
+      "spinBtn",
+      "autoBtn",
+      "bonusBtn",
+      "soundBtn",
+      "vibrateBtn",
+      "lastWinValue",
+      "bestComboValue",
+      "lastComboValue",
+      "coinBurst",
+      "reelWrap",
+    ];
 
-async function requestFullscreen() {
-    try {
-        const root = document.documentElement;
-        if (!document.fullscreenElement && root.requestFullscreen) {
-            await root.requestFullscreen();
-        }
-    } catch (err) {
-        setStatus("Fullscreen blocked by browser");
+    for (const key of required) {
+      if (!els[key]) {
+        console.error(`Missing required element: #${key}`);
+        return false;
+      }
     }
-}
 
-function adjustBet(delta) {
+    if (!Array.isArray(els.reels) || els.reels.length !== 3 || els.reels.some((r) => !r)) {
+      console.error("Missing one or more reel elements: #reel0, #reel1, #reel2");
+      return false;
+    }
+
+    return true;
+  }
+
+  function bindEvents() {
+    els.enterFullscreenBtn.addEventListener("click", handleFullscreenEntry, { passive: false });
+
+    document.addEventListener("fullscreenchange", ensureFullscreenOverlay);
+    document.addEventListener("webkitfullscreenchange", ensureFullscreenOverlay);
+    window.addEventListener("resize", ensureFullscreenOverlay);
+
+    els.betDownBtn.addEventListener("click", () => adjustBet(-BET_STEP));
+    els.betUpBtn.addEventListener("click", () => adjustBet(BET_STEP));
+
+    els.spinBtn.addEventListener("click", () => {
+      spin({ useBonus: false });
+    });
+
+    els.bonusBtn.addEventListener("click", () => {
+      spin({ useBonus: true });
+    });
+
+    els.autoBtn.addEventListener("click", toggleAutoSpin);
+    els.soundBtn.addEventListener("click", toggleSound);
+    els.vibrateBtn.addEventListener("click", toggleVibration);
+  }
+
+  async function handleFullscreenEntry() {
+    unlockAudio();
+
+    const entered = await requestFullscreenSafe();
+
+    if (!entered) {
+      setStatus("Fullscreen not supported or blocked. You can still play.");
+      if (els.fullscreenGate) {
+        els.fullscreenGate.style.display = "none";
+      }
+      return;
+    }
+
+    ensureFullscreenOverlay();
+    setStatus("Ready to spin.");
+  }
+
+  async function requestFullscreenSafe() {
+    const root = document.documentElement;
+    const fn =
+      root.requestFullscreen ||
+      root.webkitRequestFullscreen ||
+      root.mozRequestFullScreen ||
+      root.msRequestFullscreen;
+
+    if (!fn) {
+      return false;
+    }
+
+    try {
+      const result = fn.call(root);
+      if (result && typeof result.then === "function") {
+        await result;
+      }
+      return true;
+    } catch (err) {
+      console.warn("Fullscreen request failed:", err);
+      return false;
+    }
+  }
+
+  function isFullscreenActive() {
+    return !!(
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      document.mozFullScreenElement ||
+      document.msFullscreenElement
+    );
+  }
+
+  function ensureFullscreenOverlay() {
+    if (!els || !els.fullscreenGate) return;
+
+    const active = isFullscreenActive();
+    els.fullscreenGate.style.display = active ? "none" : "flex";
+  }
+
+  function adjustBet(delta) {
     if (state.isSpinning) return;
-    state.bet = clamp(state.bet + delta, 5, 100);
+
+    const next = clamp(state.bet + delta, BET_MIN, BET_MAX);
+    if (next === state.bet) return;
+
+    state.bet = next;
     renderBet();
-    tick();
-}
+    playUiTick();
+    vibrate([8]);
+  }
 
-async function spin(useBonusSpin = false, triggeredByAuto = false) {
+  function toggleAutoSpin() {
+    state.autoSpin = !state.autoSpin;
+    els.autoBtn.textContent = state.autoSpin ? "Stop" : "Auto";
+    els.autoBtn.setAttribute("aria-pressed", String(state.autoSpin));
+
+    if (state.autoSpin) {
+      setStatus("Auto spinning...");
+      if (!state.isSpinning) {
+        spin({ useBonus: false, triggeredByAuto: true });
+      }
+    } else {
+      clearAutoTimer();
+      setStatus("Auto stopped.");
+    }
+  }
+
+  function toggleSound() {
+    state.soundOn = !state.soundOn;
+    els.soundBtn.textContent = state.soundOn ? "Sound" : "Muted";
+    els.soundBtn.setAttribute("aria-pressed", String(state.soundOn));
+    if (state.soundOn) unlockAudio();
+  }
+
+  function toggleVibration() {
+    state.vibrateOn = !state.vibrateOn;
+    els.vibrateBtn.textContent = state.vibrateOn ? "Vibrate" : "Smooth";
+    els.vibrateBtn.setAttribute("aria-pressed", String(state.vibrateOn));
+  }
+
+  async function spin({ useBonus = false, triggeredByAuto = false } = {}) {
     if (state.isSpinning) return;
 
-    if (useBonusSpin) {
-        if (state.bonusSpins <= 0) {
-            setStatus("No bonus spins available");
-            badBuzz();
-            return;
-        }
+    if (useBonus) {
+      if (state.bonusSpins <= 0) {
+        setStatus("No bonus spins available.");
+        playLoseTone();
+        vibrate([20, 30, 20]);
+        return;
+      }
     } else {
-        if (state.balance < state.bet) {
-            setStatus("Not enough balance");
-            badBuzz();
-            if (state.auto) {
-                state.auto = false;
-                els.autoBtn.textContent = "Auto";
-                els.autoBtn.classList.remove("active");
-            }
-            return;
+      if (state.balance < state.bet) {
+        setStatus("Not enough balance.");
+        playLoseTone();
+        vibrate([20, 30, 20]);
+
+        if (state.autoSpin) {
+          state.autoSpin = false;
+          els.autoBtn.textContent = "Auto";
+          els.autoBtn.setAttribute("aria-pressed", "false");
+          clearAutoTimer();
         }
+        return;
+      }
     }
 
     state.isSpinning = true;
     disableControls(true);
 
-    if (useBonusSpin) {
-        state.bonusSpins -= 1;
+    unlockAudio();
+
+    if (useBonus) {
+      state.bonusSpins -= 1;
     } else {
-        state.balance -= state.bet;
+      state.balance -= state.bet;
     }
 
-    renderTop();
-    renderStats();
+    renderTopStats();
     setStatus("Spinning...");
     playSpinStart();
-    softBuzz([20, 20, 30]);
+    vibrate([15, 20, 15]);
 
-    const finalSymbols = buildFinalSpin();
-    await animateSpinSequence(finalSymbols);
+    const finalCombo = generateFinalCombo();
 
-    state.currentSymbols = finalSymbols.slice();
-    state.lastCombo = finalSymbols.slice();
+    await animateSpinSequence(finalCombo);
 
-    const result = evaluateSpin(finalSymbols, state.bet);
+    const result = evaluateCombo(finalCombo, state.bet);
+
+    state.lastCombo = [...finalCombo];
+    state.lastWin = result.win;
 
     if (result.win > 0) {
-        state.balance += result.win;
-        state.lastWin = result.win;
-        state.streak += 1;
+      state.balance += result.win;
+      state.streak += 1;
 
-        if (result.comboValue > state.bestComboValue) {
-            state.bestComboValue = result.comboValue;
-            state.bestCombo = finalSymbols.slice();
-        }
-
-        if (result.bonusAward > 0) {
-            state.bonusSpins += result.bonusAward;
-        }
-
-        renderTop();
-        renderStats();
-        renderReels(finalSymbols);
-
-        setStatus(
-            result.bonusAward > 0
-                ? `Won $${result.win} + ${result.bonusAward} bonus spin${result.bonusAward > 1 ? "s" : ""}`
-                : `Won $${result.win}`
-        );
-
-        playWin(result.win);
-        softBuzz([40, 30, 60]);
-        animateCoins(result.win);
+      if (result.score > state.bestComboScore) {
+        state.bestComboScore = result.score;
+        state.bestCombo = [...finalCombo];
+      }
     } else {
-        state.lastWin = 0;
-        state.streak = 0;
-        renderTop();
-        renderStats();
-        renderReels(finalSymbols);
+      state.streak = 0;
+    }
 
-        setStatus(
-            result.bonusAward > 0
-                ? `No cash win, but got ${result.bonusAward} bonus spin${result.bonusAward > 1 ? "s" : ""}`
-                : "No win"
-        );
+    if (result.bonusAward > 0) {
+      state.bonusSpins += result.bonusAward;
+    }
 
-        if (result.bonusAward > 0) {
-            state.bonusSpins += result.bonusAward;
-            renderTop();
-            playCoinMini();
-        } else {
-            playLose();
-            badBuzz();
-        }
+    renderAll();
+
+    if (result.win > 0) {
+      const bonusText =
+        result.bonusAward > 0
+          ? ` + ${result.bonusAward} bonus spin${result.bonusAward > 1 ? "s" : ""}`
+          : "";
+      setStatus(`Won $${result.win}${bonusText}`);
+      playWinTone(result.win);
+      spawnCoins(Math.max(6, Math.min(18, Math.floor(result.win / 25))));
+      vibrate([35, 40, 60]);
+    } else if (result.bonusAward > 0) {
+      setStatus(`Got ${result.bonusAward} bonus spin${result.bonusAward > 1 ? "s" : ""}`);
+      playBonusTone();
+      vibrate([20, 40, 20]);
+    } else {
+      setStatus("No win.");
+      playLoseTone();
+      vibrate([18]);
     }
 
     state.isSpinning = false;
     disableControls(false);
 
-    if (state.auto && !useBonusSpin) {
-        clearAuto();
-        state.autoTimer = setTimeout(() => {
-            if (state.auto && !state.isSpinning) {
-                spin(false, true);
-            }
-        }, 520);
-    } else if (!state.auto && triggeredByAuto) {
-        clearAuto();
+    if (state.autoSpin && !useBonus) {
+      clearAutoTimer();
+      state.autoTimer = setTimeout(() => {
+        if (state.autoSpin && !state.isSpinning) {
+          spin({ useBonus: false, triggeredByAuto: true });
+        }
+      }, 500);
+    } else if (!state.autoSpin && triggeredByAuto) {
+      clearAutoTimer();
     }
-}
+  }
 
-function buildFinalSpin() {
+  function generateFinalCombo() {
     const roll = Math.random();
-    if (roll < 0.18) return makeWinningCombo();
-    if (roll < 0.27) return makeBonusCombo();
-    return makeLosingCombo();
-}
 
-function makeWinningCombo() {
-    const kindRoll = Math.random();
-
-    if (kindRoll < 0.12) return ["⭐", "⭐", "⭐"];
-
-    const base = pick(WINNERS);
-
-    if (kindRoll < 0.32) {
-        return shuffle([base, base, "⭐"]);
+    if (roll < 0.18) {
+      return buildWinningCombo();
     }
 
-    return [base, base, base];
-}
-
-function makeBonusCombo() {
-    const giftCount = Math.random() < 0.25 ? 2 : 1;
-    const positions = shuffle([0, 1, 2]).slice(0, giftCount);
-    const result = [null, null, null];
-
-    positions.forEach((pos) => {
-        result[pos] = "🎁";
-    });
-
-    for (let i = 0; i < 3; i += 1) {
-        if (!result[i]) {
-            result[i] = pick([...WINNERS, "⭐", ...GARBAGE]);
-        }
+    if (roll < 0.30) {
+      return buildBonusCombo();
     }
 
-    if (isAccidentalGarbageRepeat(result) || isAccidentalWin(result)) {
-        return makeBonusCombo();
+    return buildLosingCombo();
+  }
+
+  function buildWinningCombo() {
+    const subRoll = Math.random();
+
+    if (subRoll < 0.1) {
+      return [SYMBOLS.wild, SYMBOLS.wild, SYMBOLS.wild];
     }
 
-    return result;
-}
+    const main = pick(SYMBOLS.winners);
 
-function makeLosingCombo() {
-    const pool = [...WINNERS, ...GARBAGE, "⭐"];
-    const result = [pick(pool), pick(pool), pick(pool)];
+    if (subRoll < 0.3) {
+      return shuffle([main, main, SYMBOLS.wild]);
+    }
 
-    if (isAccidentalWin(result)) return makeLosingCombo();
-    if (isAccidentalGarbageRepeat(result)) return makeLosingCombo();
-    if (countSymbol(result, "🎁") >= 1) return makeLosingCombo();
+    return [main, main, main];
+  }
 
-    return result;
-}
+  function buildBonusCombo() {
+    const gifts = Math.random() < 0.25 ? 2 : 1;
+    const combo = [null, null, null];
+    const positions = shuffle([0, 1, 2]).slice(0, gifts);
 
-function isAccidentalWin(arr) {
-    const counts = {};
-    arr.forEach((s) => {
-        counts[s] = (counts[s] || 0) + 1;
-    });
+    for (const pos of positions) {
+      combo[pos] = SYMBOLS.bonus;
+    }
 
-    if (counts["⭐"] === 3) return true;
+    for (let i = 0; i < 3; i++) {
+      if (!combo[i]) {
+        combo[i] = pick([...SYMBOLS.winners, SYMBOLS.wild, ...SYMBOLS.garbage]);
+      }
+    }
 
-    for (const winner of WINNERS) {
-        const c = counts[winner] || 0;
-        const stars = counts["⭐"] || 0;
-        if (c + stars >= 3) return true;
+    if (createsUnwantedGarbagePair(combo) || countsAsWin(combo)) {
+      return buildBonusCombo();
+    }
+
+    return combo;
+  }
+
+  function buildLosingCombo() {
+    const pool = [...SYMBOLS.winners, ...SYMBOLS.garbage, SYMBOLS.wild];
+    const combo = [pick(pool), pick(pool), pick(pool)];
+
+    if (countsAsWin(combo)) return buildLosingCombo();
+    if (createsUnwantedGarbagePair(combo)) return buildLosingCombo();
+    if (combo.includes(SYMBOLS.bonus)) return buildLosingCombo();
+
+    return combo;
+  }
+
+  function createsUnwantedGarbagePair(combo) {
+    return SYMBOLS.garbage.some((g) => combo.filter((s) => s === g).length >= 2);
+  }
+
+  function countsAsWin(combo) {
+    if (combo.every((s) => s === SYMBOLS.wild)) return true;
+
+    for (const symbol of SYMBOLS.winners) {
+      const count = combo.filter((s) => s === symbol).length;
+      const wilds = combo.filter((s) => s === SYMBOLS.wild).length;
+      if (count + wilds >= 3) return true;
     }
 
     return false;
-}
+  }
 
-function isAccidentalGarbageRepeat(arr) {
-    for (const g of GARBAGE) {
-        if (countSymbol(arr, g) >= 2) return true;
-    }
-    return false;
-}
-
-function countSymbol(arr, symbol) {
-    return arr.filter((x) => x === symbol).length;
-}
-
-function evaluateSpin(symbols, betAmount) {
-    const bonusAward = countSymbol(symbols, "🎁");
+  function evaluateCombo(combo, bet) {
+    const bonusAward = combo.filter((s) => s === SYMBOLS.bonus).length;
     let win = 0;
-    let comboValue = 0;
+    let score = 0;
 
-    if (symbols.every((s) => s === "⭐")) {
-        comboValue = PAYOUTS["⭐"] * betAmount;
-        win = comboValue;
-        return { win, bonusAward, comboValue };
+    if (combo.every((s) => s === SYMBOLS.wild)) {
+      score = PAYOUTS[SYMBOLS.wild] * bet;
+      win = score;
+      return { win, bonusAward, score };
     }
 
-    for (const winner of WINNERS) {
-        const count = countSymbol(symbols, winner);
-        const wilds = countSymbol(symbols, "⭐");
-        if (count + wilds >= 3) {
-            comboValue = PAYOUTS[winner] * betAmount;
-            win = comboValue;
-            return { win, bonusAward, comboValue };
-        }
+    for (const symbol of SYMBOLS.winners) {
+      const count = combo.filter((s) => s === symbol).length;
+      const wilds = combo.filter((s) => s === SYMBOLS.wild).length;
+
+      if (count + wilds >= 3) {
+        score = PAYOUTS[symbol] * bet;
+        win = score;
+        return { win, bonusAward, score };
+      }
     }
 
-    return { win, bonusAward, comboValue };
-}
+    return { win, bonusAward, score };
+  }
 
-async function animateSpinSequence(finalSymbols) {
-    const pools = [[], [], []];
+  async function animateSpinSequence(finalCombo) {
+    clearReelIntervals();
 
-    for (let i = 0; i < 3; i += 1) {
-        pools[i] = makeSpinFrames(finalSymbols[i], i);
-    }
+    const framePools = [
+      buildFramePool(finalCombo[0], 0),
+      buildFramePool(finalCombo[1], 1),
+      buildFramePool(finalCombo[2], 2),
+    ];
 
-    els.reelWindows[0].classList.add("spinning");
-    renderReelAt(0, pools[0][0]);
-    await wait(110);
+    startReelLoop(0, framePools[0]);
+    await wait(120);
 
-    els.reelWindows[1].classList.add("spinning");
-    renderReelAt(1, pools[1][0]);
-    await wait(110);
+    startReelLoop(1, framePools[1]);
+    await wait(120);
 
-    els.reelWindows[2].classList.add("spinning");
-    renderReelAt(2, pools[2][0]);
+    startReelLoop(2, framePools[2]);
 
-    const maxFrames = Math.max(pools[0].length, pools[1].length, pools[2].length);
+    await wait(400);
 
-    for (let frame = 0; frame < maxFrames; frame += 1) {
-        if (frame < pools[0].length) renderReelAt(0, pools[0][frame]);
-        if (frame < pools[1].length) renderReelAt(1, pools[1][frame]);
-        if (frame < pools[2].length) renderReelAt(2, pools[2][frame]);
+    stopReelLoop(0, finalCombo[0]);
+    playReelStop(0);
+    vibrate([10]);
 
-        if (frame === Math.floor(maxFrames * 0.62)) {
-            els.reelWindows[0].classList.remove("spinning");
-            playReelStop(0);
-            softBuzz(12);
-        }
+    await wait(220);
 
-        if (frame === Math.floor(maxFrames * 0.78)) {
-            els.reelWindows[1].classList.remove("spinning");
-            playReelStop(1);
-            softBuzz(12);
-        }
+    stopReelLoop(1, finalCombo[1]);
+    playReelStop(1);
+    vibrate([10]);
 
-        await wait(70);
-    }
+    await wait(220);
 
-    els.reelWindows[2].classList.remove("spinning");
+    stopReelLoop(2, finalCombo[2]);
     playReelStop(2);
-    softBuzz(18);
+    vibrate([16]);
+  }
 
-    renderReels(finalSymbols);
-}
-
-function makeSpinFrames(finalSymbol, reelIndex) {
-    const frames = [];
+  function buildFramePool(finalSymbol, reelIndex) {
+    const pool = [];
     const length = 14 + reelIndex * 4;
+    const all = [...SYMBOLS.winners, ...SYMBOLS.garbage, SYMBOLS.wild, SYMBOLS.bonus];
 
-    for (let i = 0; i < length; i += 1) {
-        frames.push(pick(ALL_SYMBOLS));
+    for (let i = 0; i < length; i++) {
+      pool.push(pick(all));
     }
 
-    frames[frames.length - 1] = finalSymbol;
-    frames[frames.length - 2] = pick(ALL_SYMBOLS);
-    return frames;
-}
+    pool[length - 1] = finalSymbol;
+    return pool;
+  }
 
-function renderReels(symbols) {
-    symbols.forEach((symbol, i) => renderReelAt(i, symbol));
-}
+  function startReelLoop(index, frames) {
+    let cursor = 0;
 
-function renderReelAt(index, symbol) {
-    els.reels[index].textContent = symbol;
-}
+    if (!els.reels[index]) return;
 
-function renderTop() {
-    els.balance.textContent = `$${state.balance}`;
-    els.bonusSpins.textContent = `${state.bonusSpins}`;
-    els.streak.textContent = `${state.streak}`;
-    els.bonusBtn.disabled = state.bonusSpins <= 0 || state.isSpinning;
-}
+    els.reels[index].classList.add("is-spinning");
 
-function renderBet() {
-    els.betValue.textContent = `$${state.bet}`;
-}
+    reelIntervals[index] = setInterval(() => {
+      if (!els.reels[index]) return;
+      els.reels[index].textContent = frames[cursor % frames.length];
+      cursor++;
+    }, 75);
+  }
 
-function renderStats() {
-    els.lastWin.textContent = `$${state.lastWin}`;
-    els.lastCombo.textContent = state.lastCombo.join(" ");
-    els.bestCombo.textContent = state.bestCombo.join(" ");
-}
+  function stopReelLoop(index, finalSymbol) {
+    if (reelIntervals[index]) {
+      clearInterval(reelIntervals[index]);
+      reelIntervals[index] = null;
+    }
 
-function renderAll() {
-    renderTop();
+    if (els.reels[index]) {
+      els.reels[index].classList.remove("is-spinning");
+      els.reels[index].textContent = finalSymbol;
+    }
+  }
+
+  function clearReelIntervals() {
+    for (let i = 0; i < reelIntervals.length; i++) {
+      if (reelIntervals[i]) {
+        clearInterval(reelIntervals[i]);
+        reelIntervals[i] = null;
+      }
+    }
+  }
+
+  function renderAll() {
+    renderTopStats();
     renderBet();
-    renderStats();
-    renderReels(state.currentSymbols);
-    els.soundBtn.textContent = state.sound ? "Sound" : "Muted";
-    els.vibrateBtn.textContent = state.vibrate ? "Vibrate" : "Smooth";
-}
+    renderResultStats();
+    renderButtons();
+  }
 
-function disableControls(disabled) {
-    els.minusBet.disabled = disabled;
-    els.plusBet.disabled = disabled;
+  function renderTopStats() {
+    els.balanceValue.textContent = `$${state.balance}`;
+    els.bonusValue.textContent = String(state.bonusSpins);
+    els.streakValue.textContent = String(state.streak);
+  }
+
+  function renderBet() {
+    els.betValue.textContent = `$${state.bet}`;
+  }
+
+  function renderResultStats() {
+    els.lastWinValue.textContent = `$${state.lastWin}`;
+    els.bestComboValue.textContent = state.bestCombo.join(" ");
+    els.lastComboValue.textContent = state.lastCombo.join(" ");
+  }
+
+  function renderButtons() {
+    els.autoBtn.textContent = state.autoSpin ? "Stop" : "Auto";
+    els.soundBtn.textContent = state.soundOn ? "Sound" : "Muted";
+    els.vibrateBtn.textContent = state.vibrateOn ? "Vibrate" : "Smooth";
+    els.bonusBtn.disabled = state.isSpinning || state.bonusSpins <= 0;
+  }
+
+  function disableControls(disabled) {
+    els.betDownBtn.disabled = disabled;
+    els.betUpBtn.disabled = disabled;
     els.spinBtn.disabled = disabled;
     els.bonusBtn.disabled = disabled || state.bonusSpins <= 0;
-}
+  }
 
-function setStatus(text) {
-    if (els.status) els.status.textContent = text;
-}
+  function setStatus(text) {
+    if (els && els.statusText) {
+      els.statusText.textContent = text;
+    }
+  }
 
-function animateCoins(amount) {
-    const count = Math.min(18, Math.max(6, Math.floor(amount / 20)));
-    const balanceRect = els.balance.getBoundingClientRect();
+  function spawnCoins(count) {
+    if (!els.coinBurst || !els.balanceValue || !els.spinBtn) return;
+
+    const balanceRect = els.balanceValue.getBoundingClientRect();
     const spinRect = els.spinBtn.getBoundingClientRect();
 
-    for (let i = 0; i < count; i += 1) {
-        const coin = document.createElement("div");
-        coin.className = "coin-fly";
-        coin.textContent = "🪙";
+    for (let i = 0; i < count; i++) {
+      const coin = document.createElement("div");
+      coin.textContent = "🪙";
+      coin.style.position = "fixed";
+      coin.style.left = `${spinRect.left + spinRect.width / 2 + randomRange(-20, 20)}px`;
+      coin.style.top = `${spinRect.top + spinRect.height / 2 + randomRange(-10, 10)}px`;
+      coin.style.fontSize = "20px";
+      coin.style.zIndex = "9999";
+      coin.style.pointerEvents = "none";
 
-        const startX = spinRect.left + spinRect.width / 2 + (Math.random() * 40 - 20);
-        const startY = spinRect.top + 10 + (Math.random() * 12 - 6);
-        const endX = balanceRect.left + balanceRect.width / 2 + (Math.random() * 20 - 10);
-        const endY = balanceRect.top + balanceRect.height / 2;
+      const tx = balanceRect.left + balanceRect.width / 2 - (spinRect.left + spinRect.width / 2) + randomRange(-10, 10);
+      const ty = balanceRect.top + balanceRect.height / 2 - (spinRect.top + spinRect.height / 2) + randomRange(-10, 10);
 
-        coin.style.left = `${startX}px`;
-        coin.style.top = `${startY}px`;
-        coin.style.setProperty("--tx", `${endX - startX}px`);
-        coin.style.setProperty("--ty", `${endY - startY}px`);
-        coin.style.animationDelay = `${i * 28}ms`;
+      coin.animate(
+        [
+          { transform: "translate(0,0) scale(0.8)", opacity: 0 },
+          { transform: "translate(0, -14px) scale(1)", opacity: 1, offset: 0.2 },
+          { transform: `translate(${tx}px, ${ty}px) scale(0.7)`, opacity: 0 }
+        ],
+        {
+          duration: 900,
+          delay: i * 35,
+          easing: "cubic-bezier(.2,.7,.2,1)",
+          fill: "forwards",
+        }
+      );
 
-        els.coinsLayer.appendChild(coin);
-
-        setTimeout(() => coin.remove(), 1100 + i * 28);
+      document.body.appendChild(coin);
+      setTimeout(() => {
+        coin.remove();
+      }, 1200 + i * 35);
     }
-}
+  }
 
-function tick() {
-    playTone(720, 0.03, "square", 0.02);
-}
-
-function badBuzz() {
-    if (state.vibrate && navigator.vibrate) navigator.vibrate([30, 25, 30]);
-}
-
-function softBuzz(pattern) {
-    if (!state.vibrate || !navigator.vibrate) return;
-    navigator.vibrate(pattern);
-}
-
-function ensureAudio() {
-    if (!state.sound) return null;
+  function unlockAudio() {
+    if (!state.soundOn) return null;
 
     if (!state.audioCtx) {
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        if (!Ctx) return null;
-        state.audioCtx = new Ctx();
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return null;
+      state.audioCtx = new AudioContextClass();
     }
 
     if (state.audioCtx.state === "suspended") {
-        state.audioCtx.resume();
+      state.audioCtx.resume().catch(() => {});
     }
 
     return state.audioCtx;
-}
+  }
 
-function playTone(freq, duration = 0.08, type = "sine", gainValue = 0.04, when = 0) {
-    const ctx = ensureAudio();
+  function playTone(freq, duration = 0.08, type = "sine", gainValue = 0.04, when = 0) {
+    if (!state.soundOn) return;
+
+    const ctx = unlockAudio();
     if (!ctx) return;
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    const start = ctx.currentTime + when;
+    const startAt = ctx.currentTime + when;
 
     osc.type = type;
-    osc.frequency.setValueAtTime(freq, start);
+    osc.frequency.setValueAtTime(freq, startAt);
 
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(gainValue, start + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    gain.gain.setValueAtTime(0.0001, startAt);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, gainValue), startAt + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
 
-    osc.start(start);
-    osc.stop(start + duration + 0.02);
-}
+    osc.start(startAt);
+    osc.stop(startAt + duration + 0.03);
+  }
 
-function playSpinStart() {
-    playTone(240, 0.06, "square", 0.04, 0);
-    playTone(320, 0.08, "square", 0.035, 0.05);
-}
+  function playUiTick() {
+    playTone(750, 0.03, "square", 0.02);
+  }
 
-function playReelStop(index) {
-    const freqs = [280, 340, 420];
-    playTone(freqs[index] || 340, 0.05, "triangle", 0.03);
-}
+  function playSpinStart() {
+    playTone(220, 0.05, "square", 0.03, 0);
+    playTone(300, 0.07, "square", 0.03, 0.05);
+    playTone(360, 0.07, "square", 0.025, 0.11);
+  }
 
-function playWin(amount) {
-    const rich = amount >= 500;
+  function playReelStop(index) {
+    const tones = [290, 350, 430];
+    playTone(tones[index] || 350, 0.05, "triangle", 0.03);
+  }
+
+  function playWinTone(amount) {
     playTone(520, 0.08, "triangle", 0.05, 0);
-    playTone(660, 0.08, "triangle", 0.05, 0.07);
-    playTone(880, 0.12, "triangle", 0.06, 0.14);
+    playTone(660, 0.08, "triangle", 0.05, 0.08);
+    playTone(880, 0.12, "triangle", 0.06, 0.16);
 
-    if (rich) {
-        playTone(1100, 0.16, "triangle", 0.07, 0.24);
-        playTone(1320, 0.18, "triangle", 0.06, 0.33);
+    if (amount >= 500) {
+      playTone(1100, 0.14, "triangle", 0.06, 0.28);
+      playTone(1320, 0.18, "triangle", 0.05, 0.38);
     }
 
-    playCoinMini();
-}
+    playBonusTone();
+  }
 
-function playCoinMini() {
+  function playBonusTone() {
     playTone(980, 0.05, "square", 0.03, 0);
     playTone(1240, 0.06, "square", 0.025, 0.05);
-}
+  }
 
-function playLose() {
-    playTone(220, 0.07, "sawtooth", 0.03, 0);
-    playTone(180, 0.1, "sawtooth", 0.025, 0.05);
-}
+  function playLoseTone() {
+    playTone(220, 0.07, "sawtooth", 0.025, 0);
+    playTone(180, 0.09, "sawtooth", 0.02, 0.05);
+  }
 
-function clearAuto() {
-    if (state.autoTimer) {
-        clearTimeout(state.autoTimer);
-        state.autoTimer = null;
+  function vibrate(pattern) {
+    if (!state.vibrateOn) return;
+    if (navigator.vibrate) {
+      navigator.vibrate(pattern);
     }
-}
+  }
 
-function pick(arr) {
+  function clearAutoTimer() {
+    if (state.autoTimer) {
+      clearTimeout(state.autoTimer);
+      state.autoTimer = null;
+    }
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function pick(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
-}
+  }
 
-function shuffle(arr) {
+  function shuffle(arr) {
     const clone = arr.slice();
-    for (let i = clone.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [clone[i], clone[j]] = [clone[j], clone[i]];
+    for (let i = clone.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [clone[i], clone[j]] = [clone[j], clone[i]];
     }
     return clone;
-}
+  }
 
-function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-}
+  function randomRange(min, max) {
+    return Math.random() * (max - min) + min;
+  }
 
-function wait(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-document.addEventListener("DOMContentLoaded", init);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
