@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <!-- Meta -->
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <meta content="Slots TEST" property="og:title">
+    <meta content="Testing Slots Logic" property="og:description">
+    <meta content="https://itsmike613.github.io/slotsTEST/" property="og:url">
+    <meta content="https://github.com/itsmike613/slotsTEST/blob/main/Source/Images/logo.png?raw=true" property="og:image">
+    <meta content="#0A3161" data-react-helmet="true" name="theme-color">
+
+    <!-- Tab -->
+    <link rel="icon" type="image/x-icon" href="Source/Images/logo.png">
+    <title>Slots TEST</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+    <link rel="stylesheet" href="Source/Styles/index.css">
+</head>
+
+<body>
+    <div class="app-shell">
+        <div class="fullscreen-gate" id="fullscreenGate">
+            <div class="gate-card">
+                <div class="gate-icon">🎰</div>
+                <h1>SLOTS</h1>
+                <p>Best experienced in fullscreen with sound and vibration.</p>
+                <button id="enterGameBtn" class="primary-btn gate-btn">
+                    <i class="ph ph-corners-out"></i>
+                    Enter Fullscreen
+                </button>
+            </div>
+        </div>
+
+        <div class="coin-burst" id="coinBurst" aria-hidden="true"></div>
+
+        <main class="machine">
+            <section class="top-strip panel">
+                <div class="top-metric">
+                    <span class="metric-label">Balance</span>
+                    <strong id="balanceValue">$100</strong>
+                </div>
+                <div class="top-metric">
+                    <span class="metric-label">Bonus Spins</span>
+                    <strong id="bonusValue">0</strong>
+                </div>
+            </section>
+
+            <section class="title-row panel">
+                <div class="title-lockup">
+                    <span class="eyebrow">Arcade Mini</span>
+                    <h2>SLOTS</h2>
+                </div>
+                <div class="streak-box">
+                    <span class="metric-label">Win Streak</span>
+                    <strong id="streakValue">0</strong>
+                </div>
+            </section>
+
+            <section class="reel-machine panel">
+                <div class="reel-wrap" id="reelWrap">
+                    <div class="reel" data-reel="0">
+                        <div class="symbol" id="reel0">🪙</div>
+                    </div>
+                    <div class="reel" data-reel="1">
+                        <div class="symbol" id="reel1">💵</div>
+                    </div>
+                    <div class="reel" data-reel="2">
+                        <div class="symbol" id="reel2">👑</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="status-box panel">
+                <div class="status-line" id="statusText">Ready to spin.</div>
+            </section>
+
+            <section class="bet-panel panel">
+                <button id="betDownBtn" class="icon-btn" aria-label="Decrease bet">
+                    <i class="ph ph-minus"></i>
+                </button>
+
+                <button id="betChip" class="bet-chip" aria-label="Current bet">
+                    <span>BET</span>
+                    <strong id="betValue">$5</strong>
+                </button>
+
+                <button id="betUpBtn" class="icon-btn" aria-label="Increase bet">
+                    <i class="ph ph-plus"></i>
+                </button>
+            </section>
+
+            <section class="spin-panel panel">
+                <button id="spinBtn" class="spin-btn">SPIN</button>
+            </section>
+
+            <section class="utility-panel panel">
+                <button id="autoBtn" class="utility-btn">Auto</button>
+                <button id="bonusBtn" class="utility-btn">Bonus</button>
+                <button id="soundBtn" class="utility-btn">Sound</button>
+                <button id="vibrateBtn" class="utility-btn">Vibrate</button>
+            </section>
+
+            <section class="stats-grid panel">
+                <div class="stat-card">
+                    <span class="metric-label">Last Win</span>
+                    <strong id="lastWinValue">$0</strong>
+                </div>
+                <div class="stat-card">
+                    <span class="metric-label">Best Combo</span>
+                    <strong id="bestComboValue">— — —</strong>
+                </div>
+                <div class="stat-card">
+                    <span class="metric-label">Last Combo</span>
+                    <strong id="lastComboValue">— — —</strong>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="Source/Scripts/index.js"></script>
+</body>
+
+</html>
