@@ -29,35 +29,88 @@ const GARBAGE = ["🥾", "🦴", "💀", "🪨", "🪶"];
 const SPECIALS = ["⭐", "🎁"];
 const ALL_SYMBOLS = [...WINNERS, ...GARBAGE, ...SPECIALS];
 
-const els = {
-    fullscreenGate: document.getElementById("fullscreenGate"),
-    enterFullscreenBtn: document.getElementById("enterFullscreenBtn"),
-    app: document.getElementById("app"),
-    balance: document.getElementById("balance"),
-    bonusSpins: document.getElementById("bonusSpins"),
-    streak: document.getElementById("streak"),
-    status: document.getElementById("status"),
-    reels: [
-        document.getElementById("reel1"),
-        document.getElementById("reel2"),
-        document.getElementById("reel3"),
-    ],
-    reelWindows: Array.from(document.querySelectorAll(".reel-window")),
-    minusBet: document.getElementById("minusBet"),
-    plusBet: document.getElementById("plusBet"),
-    betValue: document.getElementById("betValue"),
-    spinBtn: document.getElementById("spinBtn"),
-    autoBtn: document.getElementById("autoBtn"),
-    bonusBtn: document.getElementById("bonusBtn"),
-    soundBtn: document.getElementById("soundBtn"),
-    vibrateBtn: document.getElementById("vibrateBtn"),
-    lastWin: document.getElementById("lastWin"),
-    bestCombo: document.getElementById("bestCombo"),
-    lastCombo: document.getElementById("lastCombo"),
-    coinsLayer: document.getElementById("coinsLayer"),
-};
+let els = {};
+
+function getEls() {
+    return {
+        fullscreenGate: document.getElementById("fullscreenGate"),
+        enterFullscreenBtn: document.getElementById("enterFullscreenBtn"),
+        app: document.getElementById("app"),
+        balance: document.getElementById("balance"),
+        bonusSpins: document.getElementById("bonusSpins"),
+        streak: document.getElementById("streak"),
+        status: document.getElementById("status"),
+        reels: [
+            document.getElementById("reel1"),
+            document.getElementById("reel2"),
+            document.getElementById("reel3"),
+        ],
+        reelWindows: Array.from(document.querySelectorAll(".reel-window")),
+        minusBet: document.getElementById("minusBet"),
+        plusBet: document.getElementById("plusBet"),
+        betValue: document.getElementById("betValue"),
+        spinBtn: document.getElementById("spinBtn"),
+        autoBtn: document.getElementById("autoBtn"),
+        bonusBtn: document.getElementById("bonusBtn"),
+        soundBtn: document.getElementById("soundBtn"),
+        vibrateBtn: document.getElementById("vibrateBtn"),
+        lastWin: document.getElementById("lastWin"),
+        bestCombo: document.getElementById("bestCombo"),
+        lastCombo: document.getElementById("lastCombo"),
+        coinsLayer: document.getElementById("coinsLayer"),
+    };
+}
+
+function validateEls() {
+    const required = [
+        "fullscreenGate",
+        "enterFullscreenBtn",
+        "app",
+        "balance",
+        "bonusSpins",
+        "streak",
+        "status",
+        "minusBet",
+        "plusBet",
+        "betValue",
+        "spinBtn",
+        "autoBtn",
+        "bonusBtn",
+        "soundBtn",
+        "vibrateBtn",
+        "lastWin",
+        "bestCombo",
+        "lastCombo",
+        "coinsLayer",
+    ];
+
+    for (const key of required) {
+        if (!els[key]) {
+            console.error(`Missing required element: #${key}`);
+            return false;
+        }
+    }
+
+    if (els.reels.some((el) => !el)) {
+        console.error("Missing one or more reel elements: #reel1 #reel2 #reel3");
+        return false;
+    }
+
+    if (els.reelWindows.length < 3) {
+        console.error("Missing .reel-window elements");
+        return false;
+    }
+
+    return true;
+}
 
 function init() {
+    els = getEls();
+
+    if (!validateEls()) {
+        return;
+    }
+
     bindEvents();
     renderAll();
     setStatus("Ready");
@@ -82,6 +135,7 @@ function bindEvents() {
         state.auto = !state.auto;
         els.autoBtn.textContent = state.auto ? "Stop" : "Auto";
         els.autoBtn.classList.toggle("active", state.auto);
+
         if (state.auto) {
             setStatus("Auto spinning...");
             spin(false, true);
@@ -106,8 +160,8 @@ function bindEvents() {
 
 function ensureFullscreenState() {
     const isFullscreen = !!document.fullscreenElement;
-    els.fullscreenGate.hidden = isFullscreen;
-    els.app.classList.toggle("blurred", !isFullscreen);
+    if (els.fullscreenGate) els.fullscreenGate.hidden = isFullscreen;
+    if (els.app) els.app.classList.toggle("blurred", !isFullscreen);
 }
 
 async function requestFullscreen() {
@@ -123,8 +177,7 @@ async function requestFullscreen() {
 
 function adjustBet(delta) {
     if (state.isSpinning) return;
-    const next = clamp(state.bet + delta, 5, 100);
-    state.bet = next;
+    state.bet = clamp(state.bet + delta, 5, 100);
     renderBet();
     tick();
 }
@@ -172,7 +225,7 @@ async function spin(useBonusSpin = false, triggeredByAuto = false) {
     state.currentSymbols = finalSymbols.slice();
     state.lastCombo = finalSymbols.slice();
 
-    const result = evaluateSpin(finalSymbols, useBonusSpin ? state.bet : state.bet);
+    const result = evaluateSpin(finalSymbols, state.bet);
 
     if (result.win > 0) {
         state.balance += result.win;
@@ -207,6 +260,7 @@ async function spin(useBonusSpin = false, triggeredByAuto = false) {
         renderTop();
         renderStats();
         renderReels(finalSymbols);
+
         setStatus(
             result.bonusAward > 0
                 ? `No cash win, but got ${result.bonusAward} bonus spin${result.bonusAward > 1 ? "s" : ""}`
@@ -240,30 +294,20 @@ async function spin(useBonusSpin = false, triggeredByAuto = false) {
 
 function buildFinalSpin() {
     const roll = Math.random();
-
-    if (roll < 0.18) {
-        return makeWinningCombo();
-    }
-
-    if (roll < 0.27) {
-        return makeBonusCombo();
-    }
-
+    if (roll < 0.18) return makeWinningCombo();
+    if (roll < 0.27) return makeBonusCombo();
     return makeLosingCombo();
 }
 
 function makeWinningCombo() {
     const kindRoll = Math.random();
 
-    if (kindRoll < 0.12) {
-        return ["⭐", "⭐", "⭐"];
-    }
+    if (kindRoll < 0.12) return ["⭐", "⭐", "⭐"];
 
     const base = pick(WINNERS);
 
     if (kindRoll < 0.32) {
-        const arr = [base, base, "⭐"];
-        return shuffle(arr);
+        return shuffle([base, base, "⭐"]);
     }
 
     return [base, base, base];
@@ -363,12 +407,12 @@ async function animateSpinSequence(finalSymbols) {
 
     els.reelWindows[0].classList.add("spinning");
     renderReelAt(0, pools[0][0]);
-
     await wait(110);
+
     els.reelWindows[1].classList.add("spinning");
     renderReelAt(1, pools[1][0]);
-
     await wait(110);
+
     els.reelWindows[2].classList.add("spinning");
     renderReelAt(2, pools[2][0]);
 
@@ -384,6 +428,7 @@ async function animateSpinSequence(finalSymbols) {
             playReelStop(0);
             softBuzz(12);
         }
+
         if (frame === Math.floor(maxFrames * 0.78)) {
             els.reelWindows[1].classList.remove("spinning");
             playReelStop(1);
@@ -455,7 +500,7 @@ function disableControls(disabled) {
 }
 
 function setStatus(text) {
-    els.status.textContent = text;
+    if (els.status) els.status.textContent = text;
 }
 
 function animateCoins(amount) {
@@ -481,9 +526,7 @@ function animateCoins(amount) {
 
         els.coinsLayer.appendChild(coin);
 
-        setTimeout(() => {
-            coin.remove();
-        }, 1100 + i * 28);
+        setTimeout(() => coin.remove(), 1100 + i * 28);
     }
 }
 
@@ -553,10 +596,12 @@ function playWin(amount) {
     playTone(520, 0.08, "triangle", 0.05, 0);
     playTone(660, 0.08, "triangle", 0.05, 0.07);
     playTone(880, 0.12, "triangle", 0.06, 0.14);
+
     if (rich) {
         playTone(1100, 0.16, "triangle", 0.07, 0.24);
         playTone(1320, 0.18, "triangle", 0.06, 0.33);
     }
+
     playCoinMini();
 }
 
@@ -598,4 +643,4 @@ function wait(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-init();
+document.addEventListener("DOMContentLoaded", init);
